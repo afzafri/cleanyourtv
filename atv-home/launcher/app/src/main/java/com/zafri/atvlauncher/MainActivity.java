@@ -37,6 +37,7 @@ import android.text.TextUtils;
 import android.text.format.DateFormat;
 import android.text.style.ForegroundColorSpan;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -56,10 +57,12 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -77,6 +80,7 @@ import java.util.concurrent.Executors;
  * exactly one row and nothing can fall through to an unexpected view.
  */
 public class MainActivity extends Activity {
+    private static final String TAG = "AtvHome";
     private static final int TOP = 0, DOCK = 1, GRID = 2, MENU = 3, PICK = 4; // PICK: choosing a dock slot to pin into
     private static final long LONG_PRESS_MS = 600;
     private static final int PILL_INPUTS = 0, PILL_WIFI = 1, PILL_SETTINGS = 2, PILL_POWER = 3;
@@ -126,6 +130,8 @@ public class MainActivity extends Activity {
     private View focusedPill;
     private boolean resumed;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    /** Separate from io: the first ADB connection can wait a minute for the "Allow debugging?" prompt. */
+    private final ExecutorService shell = Executors.newSingleThreadExecutor();
     private final Random random = new Random();
     private String shownWallpaper; // path + timestamp of the image on screen
     private boolean rotateOnResume, resortOnResume;
@@ -230,6 +236,7 @@ public class MainActivity extends Activity {
         getSystemService(ConnectivityManager.class).unregisterNetworkCallback(networkCallback);
         handler.removeCallbacksAndMessages(null);
         io.shutdownNow();
+        shell.shutdownNow();
         super.onDestroy();
     }
 
@@ -619,39 +626,82 @@ public class MainActivity extends Activity {
         saveDock(dock, app.pkg);
     }
 
+    /** Apps that hold memory in the background but aren't on the home screen. */
+    private static final String[] ALSO_FREE = {"com.android.vending"};
+
     /**
-     * Apps can't force-stop other apps (that needs a system permission); this ends the app's process
-     * when it is in the background, which it is while the home screen is showing. App info has the
-     * system's real Force stop button.
+     * Force-stops the app through the TV's own network debugging (see AdbShell). If that isn't
+     * available, falls back to ending its process while in the background, which is all an app may do.
      */
     private void forceClose(AppInfo app) {
-        ActivityManager am = getSystemService(ActivityManager.class);
-        if (am != null) am.killBackgroundProcesses(app.pkg);
-        Toast.makeText(this, app.label + " closed", Toast.LENGTH_SHORT).show();
+        shell.execute(() -> {
+            boolean stopped = forceStop(Arrays.asList(app.pkg)) != null;
+            if (!stopped) killBackground(Arrays.asList(app.pkg));
+            handler.post(() -> Toast.makeText(this, app.label + " closed", Toast.LENGTH_SHORT).show());
+        });
     }
 
     /**
-     * Ends the background processes of every app on the home screen (except Live TV, which handles
-     * the inputs), then reports how much memory came back. Same mechanism as Force close: apps in use
-     * or playing audio are left alone, and so are system services.
+     * Force-stops every running app from the home screen (plus ALSO_FREE), except Live TV, which
+     * handles the inputs, and this launcher, then reports how much memory came back. System services
+     * are never touched. Without network debugging it can only end apps idling in the background.
      */
     private void freeMemory() {
         ActivityManager am = getSystemService(ActivityManager.class);
         if (am == null) return;
         long before = availableMemory(am);
         String liveTv = getString(R.string.live_tv_package);
-        List<AppInfo> apps = new ArrayList<>(dockApps);
-        apps.addAll(adapter.apps());
-        for (AppInfo a : apps) {
-            if (!a.pkg.equals(liveTv)) am.killBackgroundProcesses(a.pkg);
+        Set<String> pkgs = new HashSet<>(Arrays.asList(ALSO_FREE));
+        for (AppInfo a : dockApps) pkgs.add(a.pkg);
+        for (AppInfo a : adapter.apps()) pkgs.add(a.pkg);
+        pkgs.remove(liveTv);
+        pkgs.remove(getPackageName());
+        shell.execute(() -> {
+            List<String> stopped = forceStop(pkgs);
+            if (stopped == null) killBackground(pkgs);
+            // Processes take a moment to exit and their memory to be counted as free.
+            handler.postDelayed(() -> {
+                long after = availableMemory(am);
+                long freedMb = Math.max(0, after - before) / (1024 * 1024);
+                String closed = stopped == null ? "" : stopped.isEmpty() ? "Nothing to close \u00b7 "
+                        : "Closed " + stopped.size() + (stopped.size() == 1 ? " app" : " apps") + " \u00b7 ";
+                Toast.makeText(this, closed + "Freed " + freedMb + " MB \u00b7 " + after / (1024 * 1024)
+                        + " MB now free", Toast.LENGTH_LONG).show();
+            }, 1500);
+        });
+    }
+
+    /**
+     * Runs "am force-stop" for those of pkgs that have a running process. Returns the ones stopped,
+     * or null when network debugging is off or the prompt was declined. Blocking: run on shell.
+     */
+    private List<String> forceStop(Collection<String> pkgs) {
+        AdbShell adb = null;
+        try {
+            adb = AdbShell.connect(this, 60_000);
+            List<String> running = new ArrayList<>();
+            for (String line : adb.shell("ps -A -o NAME=").split("\n")) {
+                String pkg = line.trim().split(":")[0];
+                if (pkgs.contains(pkg) && !running.contains(pkg)) running.add(pkg);
+            }
+            if (!running.isEmpty()) {
+                StringBuilder cmd = new StringBuilder();
+                for (String pkg : running) cmd.append("am force-stop ").append(pkg).append(';');
+                adb.shell(cmd.toString());
+            }
+            return running;
+        } catch (IOException e) {
+            Log.w(TAG, "network debugging unavailable, falling back to killBackgroundProcesses", e);
+            return null;
+        } finally {
+            if (adb != null) adb.close();
         }
-        // Processes take a moment to exit and their memory to be counted as free.
-        handler.postDelayed(() -> {
-            long after = availableMemory(am);
-            long freedMb = Math.max(0, after - before) / (1024 * 1024);
-            Toast.makeText(this, "Freed " + freedMb + " MB \u00b7 " + after / (1024 * 1024) + " MB now free",
-                    Toast.LENGTH_LONG).show();
-        }, 1200);
+    }
+
+    private void killBackground(Collection<String> pkgs) {
+        ActivityManager am = getSystemService(ActivityManager.class);
+        if (am == null) return;
+        for (String pkg : pkgs) am.killBackgroundProcesses(pkg);
     }
 
     private static long availableMemory(ActivityManager am) {

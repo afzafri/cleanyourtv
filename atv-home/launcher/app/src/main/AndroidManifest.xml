@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- "Force close" in the tile menu. Apps can't force-stop other apps; this ends a background app's process. -->
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <!-- Real force stop: the launcher talks to the TV's own network debugging on 127.0.0.1:5555 (AdbShell). -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- A launcher needs to see every package: without this, killBackgroundProcesses rejects the
          target as "Invalid packageName" on Android 11 even though <queries> lists its activity. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />

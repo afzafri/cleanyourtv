@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dock apps, left to right, by package name. Apps that are not installed are skipped.
+         Find a package name with: adb shell pm list packages | grep -i <name> -->
+    <string-array name="dock_packages">
+        <item>com.community.mbox.tv</item>                 <!-- MovieBox -->
+        <item>studio.scillarium.ottnavigator</item>        <!-- OTT Navigator -->
+        <item>com.netflix.ninja</item>                     <!-- Netflix -->
+        <item>com.apple.atve.androidtv.appletv</item>      <!-- Apple TV -->
+        <item>com.google.android.youtube.tv</item>         <!-- YouTube -->
+    </string-array>
+
+    <!-- Apps to leave out of the grid (they stay installed and enabled). -->
+    <string-array name="hidden_packages">
+    </string-array>
+
+    <integer name="grid_columns">4</integer>
+
+    <!-- true = grid ordered by time spent in each app over the last 30 days (re-sorted when the TV wakes),
+         false = alphabetical. The dock is never reordered. -->
+    <bool name="grid_sort_by_usage">true</bool>
+
+    <!-- Wallpapers: put images (.jpg / .png / .webp) in
+         /sdcard/Android/data/com.zafri.atvlauncher/files/wallpapers/ and they rotate.
+         A single /sdcard/Android/data/com.zafri.atvlauncher/files/wallpaper.jpg is used when that folder is empty.
+         No images at all = pitch black. -->
+
+    <!-- How much the wallpaper is darkened, 0-100. -->
+    <integer name="wallpaper_dim_percent">35</integer>
+
+    <!-- The wallpaper changes each time the TV turns on, and also every this many minutes while the
+         home screen is showing. 0 = only when the TV turns on. -->
+    <integer name="wallpaper_rotate_minutes">30</integer>
+
+    <!-- true = random order (never the same image twice in a row), false = alphabetical order. -->
+    <bool name="wallpaper_shuffle">true</bool>
+
+    <!-- App that plays the TV tuner; opened by "Live TV" in the Inputs menu. -->
+    <string name="live_tv_package">com.mediatek.wwtv.tvcenter</string>
+</resources>

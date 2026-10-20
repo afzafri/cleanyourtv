@@ -1,0 +1,20 @@
+# batch 1: telemetry / ads / retail demo
+android.autoinstalls.config.skyworth
+fusion.android.tv.demo
+com.smartdevice.common.demonow
+com.google.android.feedback
+com.google.android.apps.nbu.smartconnect.tv
+com.mediatek.testpq
+# batch 2: content / recommendations / setup leftovers
+com.google.android.tvrecommendations
+com.google.android.leanbacklauncher.partnercustomizer
+com.mstar.android.tv.disclaimercustomization
+# batch 3: apps you don't use
+com.amazon.amazonvideo.livingroom
+com.google.android.videos
+com.google.android.play.games
+com.mediatek.wwtv.mediaplayer
+com.Smartdevice.emanual
+# batch 4: features you don't want
+com.google.android.katniss
+com.airoha.ble.ota

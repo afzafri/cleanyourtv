@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Home</string>
+    <string name="power_service_label">Home power controls</string>
+    <string name="power_service_description">Lets the Home screen\'s Power button put the TV to sleep and open the restart / power off menu. It reads nothing on screen.</string>
+</resources>

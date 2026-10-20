@@ -8,3 +8,12 @@ launcher/local.properties
 # your own TV's dumps (serial, android_id, device names) stay local
 backup/
 .DS_Store
+
+# atv-home: build output and everything private to one TV
+atv-home/launcher/.gradle/
+atv-home/launcher/build/
+atv-home/launcher/app/build/
+atv-home/launcher/local.properties
+atv-home/backup-*/
+atv-home/shots/
+atv-home/wallpapers/photos/

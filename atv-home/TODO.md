@@ -6,10 +6,12 @@
       - **Free up memory** (Power menu): open a few apps, come home, check the "Freed X MB" message.
       - **Smart grid order**: grid starts with the most used apps; `appops get com.zafri.atvlauncher GET_USAGE_STATS`
         says allow.
-- [ ] **Name in the greeting** ("Good evening, Afif"): take the name from the TV's device name ("Afif's TV",
-      Settings -> Device Preferences -> About -> Device name; `Settings.Global.DEVICE_NAME`, no permission
-      needed). Google account display names aren't readable by apps. Open question: is "Afif" the right name, or
-      use a fixed name from `config.xml` instead?
+      - **Uniform grid**: 5 columns, each lined up under a dock tile; Down from each dock tile lands right below it.
+      - **Home settings** (Settings pill -> Home settings): every row changes with Left/Right/OK; Apps per row 4/6
+        rebuilds the screen on Back; darkness changes live; Reset dock works.
+      - Then commit to the fork (not committed yet).
+- [x] **Name in the greeting** ("Good evening, Afif"): from the device name ("Afif's TV"), or `greeting_name`
+      in `config.xml`.
 - [ ] **Continue watching** (on hold until further notice): fill the empty space on the right of the home screen, beside the
       clock, with a "Continue watching" card for the most recently used app only (one item, not a row).
 - [ ] **Go to home on power-on when the PS5 is off**: the firmware has no "Power on behavior" setting, so the

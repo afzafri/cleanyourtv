@@ -111,6 +111,12 @@ bright photos.
   **Up** goes back the same way. **Back** in the grid jumps to the dock.
 - **Up** from the dock reaches the top-right pills: **Inputs** (HDMI 1/2, Composite, Live TV; the PS5 shows
   next to its HDMI port through HDMI-CEC), **Wi-Fi** (network name; opens Wi-Fi settings) and **Settings**.
+- **Settings** pill: **Home settings** or **TV settings** (Android's). Home settings changes these on the TV,
+  Left/Right (or OK) to change the value, Back to close; they override `config.xml`, which only holds the defaults:
+  Apps per row (4/5/6, dock and grid together, the screen rebuilds when the panel closes), Wallpaper changes
+  (on wake only / 15 / 30 / 60 min), Wallpaper order (shuffle / A-Z), Wallpaper darkness (20/35/50%),
+  App order (most used / A-Z), Animations (on/off), and Reset dock to default.
+- The grid uses the dock's columns, tile size and spacing, so every grid column sits under a dock tile.
 - **Power** pill (right of Settings): **Sleep** puts the TV in standby like the remote's power button;
   **Free up memory** ends the background processes of every app on the home screen (not Live TV) and shows
   how much memory came back; use it when apps start crashing or restarting. **Restart or shut down…** opens

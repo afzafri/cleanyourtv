@@ -14,7 +14,9 @@
     <string-array name="hidden_packages">
     </string-array>
 
-    <integer name="grid_columns">4</integer>
+    <!-- Apps per row, for the dock and the grid alike (tiles line up in columns). Default only:
+         Settings -> Home settings -> Apps per row on the TV overrides it, like the other values below. -->
+    <integer name="grid_columns">5</integer>
 
     <!-- true = grid ordered by time spent in each app over the last 30 days (re-sorted when the TV wakes),
          false = alphabetical. The dock is never reordered. -->
@@ -34,6 +36,9 @@
 
     <!-- true = random order (never the same image twice in a row), false = alphabetical order. -->
     <bool name="wallpaper_shuffle">true</bool>
+
+    <!-- Name in the greeting ("Good evening, Afif"). Empty = take it from the TV's device name ("Afif's TV"). -->
+    <string name="greeting_name"></string>
 
     <!-- App that plays the TV tuner; opened by "Live TV" in the Inputs menu. -->
     <string name="live_tv_package">com.mediatek.wwtv.tvcenter</string>

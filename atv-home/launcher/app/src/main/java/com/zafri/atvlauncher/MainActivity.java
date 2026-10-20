@@ -88,6 +88,7 @@ public class MainActivity extends Activity {
     private Typeface thin, light, regular;
 
     // Geometry, in px.
+    private int gridLeft, gridGap;
     private int side, bandMargin, headerH, bandH, gridTop, gridRowH, gridTileH, dockTileW, dockTileH, rowAnchor, glowSize;
 
     private FrameLayout root, page, header, dockBand;
@@ -105,6 +106,9 @@ public class MainActivity extends Activity {
     private LinearLayout menu;
     private final List<View> menuRows = new ArrayList<>();
     private final List<Runnable> menuActions = new ArrayList<>();
+    private final List<Setting> menuSettings = new ArrayList<>(); // parallel to menuRows; null = plain menu item
+    private int panelWidthDp = 270;
+    private boolean layoutChanged; // apps per row changed: rebuild the screen when the panel closes
     private int menuReturnZone = TOP;
     private AppInfo pinning;
     private boolean selectDown, longPressFired;
@@ -192,12 +196,12 @@ public class MainActivity extends Activity {
         dp = m.density;
         screenW = m.widthPixels;
         screenH = m.heightPixels;
-        cols = getResources().getInteger(R.integer.grid_columns);
+        cols = appsPerRow();
         thin = font(200);
         light = font(300);
         regular = font(400);
 
-        computeGeometry(getResources().getStringArray(R.array.dock_packages).length);
+        computeGeometry();
         buildUi();
         setContentView(root);
         updateClock();
@@ -271,8 +275,9 @@ public class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- layout
 
-    private void computeGeometry(int dockCount) {
-        int n = Math.max(1, dockCount);
+    /** The grid uses the dock's columns, tile size and spacing, so every grid column sits under a dock tile. */
+    private void computeGeometry() {
+        int n = cols;
         side = px(48);
         bandMargin = px(32);
         int bandPad = px(24), dockGap = px(20), labelH = px(34); // dock tiles have no label: the big name above shows it
@@ -281,9 +286,9 @@ public class MainActivity extends Activity {
         bandH = bandPad + dockTileH + bandPad;
         headerH = screenH - bandH - px(22);
 
-        int gridGap = px(28);
-        int gridTileW = (screenW - 2 * side - (cols - 1) * gridGap) / cols;
-        gridTileH = gridTileW * 9 / 16;
+        gridGap = dockGap;
+        gridLeft = bandMargin + bandPad;
+        gridTileH = dockTileH;
         gridRowH = gridTileH + labelH + px(14);
         gridTop = headerH + bandH + px(44);
         rowAnchor = px(110);
@@ -303,8 +308,7 @@ public class MainActivity extends Activity {
         wallpaperIncoming.setAlpha(0f);
         root.addView(wallpaperIncoming, match());
         wallDim = new View(this);
-        int dim = getResources().getInteger(R.integer.wallpaper_dim_percent);
-        wallDim.setBackgroundColor(Color.argb(dim * 255 / 100, 0, 0, 0));
+        applyDim();
         wallDim.setVisibility(View.GONE);
         root.addView(wallDim, match());
         // Darker at the top (clock, pills) and bottom (app name, dock) so white text reads on bright photos.
@@ -387,7 +391,7 @@ public class MainActivity extends Activity {
         dockBand.setBackground(band);
         dockRow = new LinearLayout(this);
         dockRow.setOrientation(LinearLayout.HORIZONTAL);
-        dockRow.setGravity(Gravity.CENTER_HORIZONTAL);
+        dockRow.setGravity(Gravity.START); // left-aligned so a part-full dock still lines up with the grid
         dockRow.setClipChildren(false);
         dockRow.setClipToPadding(false);
         dockRow.setPadding(px(24), px(24), px(24), px(24));
@@ -406,7 +410,7 @@ public class MainActivity extends Activity {
         grid.setOverScrollMode(View.OVER_SCROLL_NEVER);
         grid.setFocusable(false);
         grid.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
-        int gap = px(28);
+        int gap = gridGap;
         grid.addItemDecoration(new RecyclerView.ItemDecoration() {
             @Override
             public void getItemOffsets(@NonNull Rect out, @NonNull View v, @NonNull RecyclerView p, @NonNull RecyclerView.State s) {
@@ -417,8 +421,8 @@ public class MainActivity extends Activity {
         });
         adapter = new GridAdapter(() -> new Tile(this, ViewGroup.LayoutParams.MATCH_PARENT, gridTileH, dp, regular, true), gridRowH);
         grid.setAdapter(adapter);
-        FrameLayout.LayoutParams gl = new FrameLayout.LayoutParams(screenW - 2 * side, gridRowH);
-        gl.leftMargin = side;
+        FrameLayout.LayoutParams gl = new FrameLayout.LayoutParams(cols * dockTileW + (cols - 1) * gridGap, gridRowH);
+        gl.leftMargin = gridLeft;
         gl.topMargin = gridTop;
         page.addView(grid, gl);
 
@@ -466,11 +470,11 @@ public class MainActivity extends Activity {
         Set<String> inDock = new HashSet<>();
         for (String pkg : savedDock()) {
             AppInfo a = byPkg.get(pkg);
-            if (a != null && inDock.add(pkg)) dockApps.add(a);
+            if (a != null && dockApps.size() < dockCapacity() && inDock.add(pkg)) dockApps.add(a);
         }
         List<AppInfo> rest = new ArrayList<>();
         for (AppInfo a : all) if (!inDock.contains(a.pkg) && !hidden.contains(a.pkg)) rest.add(a);
-        if (getResources().getBoolean(R.bool.grid_sort_by_usage)) sortByUsage(rest);
+        if (sortByUsageSetting()) sortByUsage(rest);
 
         dockRow.removeAllViews();
         dockTiles.clear();
@@ -572,7 +576,7 @@ public class MainActivity extends Activity {
     }
 
     private int dockCapacity() {
-        return Math.max(1, getResources().getStringArray(R.array.dock_packages).length);
+        return cols;
     }
 
     private void pin(AppInfo app) {
@@ -793,6 +797,7 @@ public class MainActivity extends Activity {
             case DOCK:
             case PICK: if (dockIdx > 0) dockIdx--; break;
             case GRID: if (gridIdx % cols > 0) gridIdx--; break;
+            case MENU: changeSetting(-1, false); break;
             default: break;
         }
     }
@@ -803,6 +808,7 @@ public class MainActivity extends Activity {
             case DOCK:
             case PICK: if (dockIdx < dockApps.size() - 1) dockIdx++; break;
             case GRID: if (gridIdx % cols < cols - 1 && gridIdx + 1 < adapter.getItemCount()) gridIdx++; break;
+            case MENU: changeSetting(1, false); break;
             default: break;
         }
     }
@@ -818,13 +824,14 @@ public class MainActivity extends Activity {
             case TOP:
                 if (topIdx == PILL_INPUTS) openInputs();
                 else if (topIdx == PILL_WIFI) startSafe(new Intent(Settings.ACTION_WIFI_SETTINGS));
-                else if (topIdx == PILL_SETTINGS) startSafe(new Intent(Settings.ACTION_SETTINGS));
+                else if (topIdx == PILL_SETTINGS) openSettingsMenu();
                 else openPowerMenu();
                 break;
             case DOCK: if (!dockApps.isEmpty()) launch(dockApps.get(dockIdx)); break;
             case GRID: if (adapter.getItemCount() > 0) launch(adapter.apps().get(gridIdx)); break;
             case PICK: replaceSlot(); break;
             case MENU:
+                if (changeSetting(1, true)) break; // settings rows change in place; the panel stays open
                 Runnable action = menuActions.get(menuIdx);
                 closeMenu();
                 applyFocus(false);
@@ -835,9 +842,7 @@ public class MainActivity extends Activity {
 
     /** Grid column under the focused dock tile. */
     private int dockColumn() {
-        int n = dockApps.size();
-        if (n <= 1) return 0;
-        return Math.round(dockIdx * (cols - 1) / (float) (n - 1));
+        return Math.min(dockIdx, cols - 1); // dock and grid share columns
     }
 
     // ---------------------------------------------------------------- focus
@@ -848,6 +853,7 @@ public class MainActivity extends Activity {
     }
 
     private void applyFocus(boolean animate) {
+        animate = animate && animationsOn();
         float ty = zone == MENU ? page.getTranslationY() : pageTargetY();
         page.animate().cancel();
         dockBand.animate().cancel();
@@ -972,7 +978,8 @@ public class MainActivity extends Activity {
 
     /** Shows the panel under the anchor (root coordinates), or above it when it would run off the bottom. */
     private void showPanel(RectF anchor, int returnZone) {
-        int w = px(270);
+        int w = px(panelWidthDp);
+        panelWidthDp = 270;
         menu.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         int h = menu.getMeasuredHeight();
@@ -990,6 +997,141 @@ public class MainActivity extends Activity {
         zone = MENU;
         menuIdx = 0;
         afterLayout(menu, () -> applyFocus(true));
+    }
+
+    // ---------------------------------------------------------------- settings
+
+    /** One Home settings row: a label and a value changed with Left/Right or OK. */
+    private static final class Setting {
+        final String[] names;
+        final int[] values;
+        final TextView valueView;
+        final java.util.function.IntConsumer onChange;
+        int idx;
+
+        Setting(String[] names, int[] values, int idx, TextView valueView, java.util.function.IntConsumer onChange) {
+            this.names = names;
+            this.values = values;
+            this.idx = idx;
+            this.valueView = valueView;
+            this.onChange = onChange;
+        }
+    }
+
+    // Values set on the TV override config.xml, which only supplies the defaults.
+    private int appsPerRow() {
+        return prefs.getInt("set_columns", getResources().getInteger(R.integer.grid_columns));
+    }
+
+    private int rotateMinutes() {
+        return prefs.getInt("set_rotate", getResources().getInteger(R.integer.wallpaper_rotate_minutes));
+    }
+
+    private boolean shuffleSetting() {
+        return prefs.getBoolean("set_shuffle", getResources().getBoolean(R.bool.wallpaper_shuffle));
+    }
+
+    private int dimPercent() {
+        return prefs.getInt("set_dim", getResources().getInteger(R.integer.wallpaper_dim_percent));
+    }
+
+    private boolean sortByUsageSetting() {
+        return prefs.getBoolean("set_sort_usage", getResources().getBoolean(R.bool.grid_sort_by_usage));
+    }
+
+    private boolean animationsOn() {
+        return prefs.getBoolean("set_animations", true);
+    }
+
+    private void applyDim() {
+        wallDim.setBackgroundColor(Color.argb(dimPercent() * 255 / 100, 0, 0, 0));
+    }
+
+    /** Settings pill: the launcher's own settings, or Android's. */
+    private void openSettingsMenu() {
+        closeMenu();
+        menu = newPanel();
+        addMenuItem("Home settings", null, this::openHomeSettings);
+        addMenuItem("TV settings", null, () -> startSafe(new Intent(Settings.ACTION_SETTINGS)));
+        RectF r = new RectF();
+        rectIn(pills[PILL_SETTINGS], page, r);
+        showPanel(r, TOP);
+    }
+
+    private void openHomeSettings() {
+        closeMenu();
+        menu = newPanel();
+        addSetting("Apps per row", new String[]{"4", "5", "6"}, new int[]{4, 5, 6}, appsPerRow(), v -> {
+            prefs.edit().putInt("set_columns", v).apply();
+            layoutChanged = v != cols;
+        });
+        addSetting("Wallpaper changes", new String[]{"On wake only", "Every 15 min", "Every 30 min", "Every hour"},
+                new int[]{0, 15, 30, 60}, rotateMinutes(), v -> {
+                    prefs.edit().putInt("set_rotate", v).apply();
+                    scheduleRotation();
+                });
+        addSetting("Wallpaper order", new String[]{"Shuffle", "A\u2013Z"}, new int[]{1, 0}, shuffleSetting() ? 1 : 0,
+                v -> prefs.edit().putBoolean("set_shuffle", v == 1).apply());
+        addSetting("Wallpaper darkness", new String[]{"20%", "35%", "50%"}, new int[]{20, 35, 50}, dimPercent(), v -> {
+            prefs.edit().putInt("set_dim", v).apply();
+            applyDim();
+        });
+        addSetting("App order", new String[]{"Most used", "A\u2013Z"}, new int[]{1, 0}, sortByUsageSetting() ? 1 : 0, v -> {
+            prefs.edit().putBoolean("set_sort_usage", v == 1).apply();
+            reloadApps();
+        });
+        addSetting("Animations", new String[]{"On", "Off"}, new int[]{1, 0}, animationsOn() ? 1 : 0,
+                v -> prefs.edit().putBoolean("set_animations", v == 1).apply());
+        addMenuItem("Reset dock to default", null, () -> {
+            prefs.edit().remove("dock").apply();
+            reloadApps();
+            Toast.makeText(this, "Dock reset", Toast.LENGTH_SHORT).show();
+        });
+        RectF r = new RectF();
+        rectIn(pills[PILL_SETTINGS], page, r);
+        panelWidthDp = 380;
+        showPanel(r, TOP);
+    }
+
+    private void addSetting(String label, String[] names, int[] values, int current, java.util.function.IntConsumer onChange) {
+        int idx = 0;
+        for (int i = 0; i < values.length; i++) if (values[i] == current) idx = i;
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(px(16), 0, px(16), 0);
+        TextView name = text(regular, 15, 0xFFFFFFFF);
+        name.setText(label);
+        row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView value = text(regular, 15, 0xB3FFFFFF);
+        row.addView(value, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        Setting st = new Setting(names, values, idx, value, onChange);
+        showValue(st);
+        menu.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(44)));
+        menuRows.add(row);
+        menuActions.add(null);
+        menuSettings.add(st);
+    }
+
+    private static void showValue(Setting st) {
+        st.valueView.setText("\u2039  " + st.names[st.idx] + "  \u203A");
+    }
+
+    /**
+     * Steps the focused settings row: Left/Right move one value and stop at the ends, OK wraps around.
+     * Returns false when the focused row is a plain menu item.
+     */
+    private boolean changeSetting(int delta, boolean wrap) {
+        if (menuIdx >= menuSettings.size()) return false;
+        Setting st = menuSettings.get(menuIdx);
+        if (st == null) return false;
+        int n = st.names.length;
+        int idx = wrap ? (st.idx + delta + n) % n : Math.max(0, Math.min(n - 1, st.idx + delta));
+        if (idx == st.idx) return true;
+        st.idx = idx;
+        showValue(st);
+        st.onChange.accept(st.values[idx]);
+        return true;
     }
 
     private void openPowerMenu() {
@@ -1095,9 +1237,15 @@ public class MainActivity extends Activity {
         menu.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(44)));
         menuRows.add(row);
         menuActions.add(action);
+        menuSettings.add(null);
     }
 
     private void closeMenu() {
+        menuSettings.clear();
+        if (layoutChanged) {
+            layoutChanged = false;
+            handler.post(this::recreate); // new column count: rebuild the layout
+        }
         if (menu != null) root.removeView(menu);
         menu = null;
         menuRows.clear();
@@ -1113,7 +1261,19 @@ public class MainActivity extends Activity {
         clock.setText(new SimpleDateFormat(DateFormat.is24HourFormat(this) ? "HH:mm" : "h:mm", loc).format(now));
         date.setText(new SimpleDateFormat("EEEE, d MMMM", loc).format(now));
         int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-        greeting.setText(h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
+        String name = ownerName();
+        greeting.setText((h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening")
+                + (name.isEmpty() ? "" : ", " + name));
+    }
+
+    /** config.xml's greeting_name, else "Afif" from a device name like "Afif's TV"; empty for "Android TV". */
+    private String ownerName() {
+        String fixed = getString(R.string.greeting_name).trim();
+        if (!fixed.isEmpty()) return fixed;
+        String device = Settings.Global.getString(getContentResolver(), Settings.Global.DEVICE_NAME);
+        if (device == null) return "";
+        int i = device.replace('\u2019', '\'').indexOf("'s ");
+        return i > 0 ? device.substring(0, i).trim() : "";
     }
 
     private void updateNetwork() {
@@ -1170,7 +1330,7 @@ public class MainActivity extends Activity {
     }
 
     private long rotateIntervalMs() {
-        return getResources().getInteger(R.integer.wallpaper_rotate_minutes) * 60_000L;
+        return rotateMinutes() * 60_000L;
     }
 
     private boolean rotationDue() {
@@ -1208,7 +1368,7 @@ public class MainActivity extends Activity {
             int n = files.size();
             int i;
             if (n == 1) i = 0;
-            else if (getResources().getBoolean(R.bool.wallpaper_shuffle)) i = current < 0 ? random.nextInt(n) : (current + 1 + random.nextInt(n - 1)) % n;
+            else if (shuffleSetting()) i = current < 0 ? random.nextInt(n) : (current + 1 + random.nextInt(n - 1)) % n;
             else i = (current + 1) % n;
             next = files.get(i);
             prefs.edit().putString("wp_name", next.getName()).putLong("wp_changed", System.currentTimeMillis()).apply();
